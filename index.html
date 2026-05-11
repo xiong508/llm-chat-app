@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>多轮对话助手 - 通义千问</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    
+    <!-- 要素①：页面标题和使用说明 -->
+    <header>
+      <h1>🤖 多轮对话助手</h1>
+      <p>基于通义千问 <strong>qwen3.6-plus</strong> 模型，支持连续多轮对话。请输入你的 API Key 后开始使用。</p>
+    </header>
+
+    <!-- 要素②：API Key 输入区 -->
+    <section class="api-key-section">
+      <label for="api-key-input">🔑 API Key：</label>
+      <input 
+        type="password" 
+        id="api-key-input" 
+        placeholder="请输入你的阿里云百炼 API Key（sk-...）"
+      >
+      <button id="save-key-btn" onclick="saveApiKey()">保存 Key</button>
+      <span id="key-status" class="key-status"></span>
+    </section>
+
+    <!-- 要素③ + ④：用户输入区 + 发送按钮 -->
+    <section class="input-section">
+      <textarea 
+        id="user-input" 
+        placeholder="请在此输入你的问题或指令..."
+        rows="4"
+      ></textarea>
+      <button id="send-btn" onclick="handleSend()" disabled>📨 发送</button>
+    </section>
+
+    <!-- 要素⑤：模型回复显示区（含要素⑥加载提示 & 要素⑦错误提示） -->
+    <section class="chat-section">
+      <div class="chat-header">💬 对话记录</div>
+      <div id="chat-box" class="chat-box">
+        <div class="empty-hint">尚未开始对话，输入内容后点击发送吧～</div>
+      </div>
+    </section>
+
+    <!-- 要素⑧：清空对话按钮 -->
+    <button id="clear-btn" onclick="clearAll()">🗑 清空对话 & 清除 Key</button>
+
+  </div>
+
+  <script src="js/script.js"></script>
+</body>
+</html>
