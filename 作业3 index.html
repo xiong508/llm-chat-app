@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>智能康复训练助手 - 智能体应用</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e8eaed;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 24px;
+            max-width: 1200px;
+            width: 100%;
+            background: #1a1d27;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        }
+        .main-panel { flex: 2; }
+        .side-panel { flex: 1; min-width: 300px; }
+        h1 { font-size: 24px; margin-bottom: 4px; }
+        .subtitle { color: #8892b0; font-size: 14px; margin-bottom: 16px; }
+        .video-wrapper {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #0a0c12;
+            min-height: 360px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #simCanvas { width: 100%; height: auto; display: block; background: #0a0c12; }
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            align-items: center;
+        }
+        .controls button {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #startBtn { background: #4f8cf7; color: white; }
+        #startBtn:hover { background: #3a7ae8; }
+        #stopBtn { background: #2d313e; color: #e8eaed; }
+        #stopBtn:hover { background: #3d4150; }
+        #statusText { color: #8892b0; font-size: 13px; margin-left: 12px; }
+        .side-panel { display: flex; flex-direction: column; gap: 16px; }
+        .workflow-section, .advice-section {
+            background: #13161f;
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .workflow-section h3, .advice-section h3 {
+            font-size: 14px;
+            color: #8892b0;
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+        .workflow-log {
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1.8;
+        }
+        .workflow-log .log-item {
+            padding: 2px 0;
+            border-bottom: 1px solid #1f2330;
+            color: #a8b2d1;
+        }
+        .workflow-log .log-item.done { color: #7ee4a4; }
+        .workflow-log .log-item.running { color: #f7d44a; }
+        .workflow-log .log-item.error { color: #f7768e; }
+        .advice-box {
+            min-height: 120px;
+            font-size: 14px;
+            line-height: 1.7;
+            color: #c8d0e0;
+            padding: 4px 0;
+        }
+        .advice-box .highlight { color: #4f8cf7; font-weight: 600; }
+        .advice-box .warning { color: #f7d44a; }
+        .advice-box .danger { color: #f7768e; }
+        .footnote {
+            color: #8892b0;
+            font-size: 12px;
+            margin-top: 12px;
+            border-top: 1px solid #1f2330;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-panel">
+            <h1>🧘 智能康复训练助手</h1>
+            <p class="subtitle">基于 Qwen3.7-Plus 的智能体 · 人体康复动作检测</p>
+            <div class="video-wrapper">
+                <canvas id="simCanvas" width="640" height="480"></canvas>
+            </div>
+            <div class="controls">
+                <button id="startBtn">▶ 启动模拟</button>
+                <button id="stopBtn">⏹ 停止</button>
+                <span id="statusText">等待启动...</span>
+            </div>
+            <div class="footnote">
+                ⚡ 本演示使用模拟人体姿态数据，完整展示智能体工作流（姿态估计 → 角度计算 → LLM分析 → 康复建议）。
+            </div>
+        </div>
+
+        <div class="side-panel">
+            <div class="workflow-section">
+                <h3>⚙️ 智能体工作流</h3>
+                <div class="workflow-log" id="workflowLog">
+                    <div class="log-item">⏳ 等待启动智能体...</div>
+                </div>
+            </div>
+            <div class="advice-section">
+                <h3>💬 康复建议</h3>
+                <div class="advice-box" id="adviceBox">
+                    <p style="color:#999;">等待动作分析...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // ⚠️ 重要：替换为你的阿里云百炼 API Key
+        // ============================================================
+        const CONFIG = {
+            apiKey: 'sk-3feb562c6d8940a0a77707febae208ea', // ⚠️ 改成你自己的 Key
+            model: 'qwen3.7-plus',
+            baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        };
+
+        // DOM 引用
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const workflowLog = document.getElementById('workflowLog');
+        const adviceBox = document.getElementById('adviceBox');
+        const statusText = document.getElementById('statusText');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        let isRunning = false;
+        let simInterval = null;
+        let analysisTimer = null;
+
+        function addLog(message, type = '') {
+            const div = document.createElement('div');
+            div.className = `log-item ${type}`;
+            const time = new Date().toLocaleTimeString();
+            div.textContent = `[${time}] ${message}`;
+            workflowLog.appendChild(div);
+            workflowLog.scrollTop = workflowLog.scrollHeight;
+        }
+
+        function setAdvice(text) {
+            adviceBox.innerHTML = text;
+        }
+
+        // ============================================================
+        // 调用真实的 Qwen3.7-Plus API
+        // ============================================================
+        async function callQwen(angle, hipAngle) {
+            addLog('🧠 调用 Qwen3.7-Plus 大模型...', 'running');
+
+            const systemPrompt =
+                `你是一个专业的康复医学专家。用户正在进行康复训练动作，你需要根据人体关节角度数据给出专业的康复建议。
+
+参考标准：
+- 膝关节正常屈曲范围：0°-140°，深蹲时建议 90°-110°
+- 髋关节正常屈曲范围：0°-120°
+- 如果角度异常，提示可能存在的风险
+
+请用简洁专业的语言回复，包含：
+1. 当前动作评估（正常/需注意/有风险）
+2. 具体的改进建议
+3. 安全提醒`;
+
+            const userMessage =
+                `当前检测到的人体姿态数据：
+- 左膝弯曲角度：${Math.round(angle)}°
+- 左髋关节角度：${Math.round(hipAngle)}°
+
+请分析这个动作是否标准，并给出康复建议。`;
+
+            try {
+                const response = await fetch(`${CONFIG.baseUrl}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${CONFIG.apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: CONFIG.model,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: userMessage }
+                        ],
+                        temperature: 0.7,
+                        max_tokens: 500
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API 错误 (${response.status}): ${errorText}`);
+                }
+
+                const data = await response.json();
+                const advice = data.choices[0].message.content;
+                addLog('✅ Qwen3.7-Plus 返回建议', 'done');
+                return advice.replace(/\n/g, '<br>');
+            } catch (error) {
+                addLog(`❌ API调用失败: ${error.message}`, 'error');
+                return `⚠️ 暂时无法获取AI建议，请检查API Key配置。错误：${error.message}`;
+            }
+        }
+
+        // ============================================================
+        // 绘制模拟火柴人
+        // ============================================================
+        function drawStickman(kneeAngle, hipAngle) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1a1d27';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const shoulder = { x: 320, y: 100 };
+            const hip = { x: 320, y: 220 };
+            const knee = { x: 320, y: 340 };
+            const ankle = { x: 320, y: 430 };
+
+            const kneeOffsetX = (kneeAngle - 90) * 0.3;
+            knee.x += kneeOffsetX;
+            const hipOffsetX = (hipAngle - 90) * 0.2;
+            hip.x += hipOffsetX;
+
+            ctx.strokeStyle = '#4f8cf7';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(shoulder.x, shoulder.y);
+            ctx.lineTo(hip.x, hip.y);
+            ctx.lineTo(knee.x, knee.y);
+            ctx.lineTo(ankle.x, ankle.y);
+            ctx.stroke();
+
+            ctx.fillStyle = '#7ee4a4';
+            [shoulder, hip, knee, ankle].forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 8, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '18px sans-serif';
+            ctx.fillText(`左膝角度: ${Math.round(kneeAngle)}°`, 20, 40);
+            ctx.fillText(`左髋角度: ${Math.round(hipAngle)}°`, 20, 70);
+            ctx.fillStyle = '#8892b0';
+            ctx.font = '14px sans-serif';
+            ctx.fillText('（模拟数据）', 20, 100);
+        }
+
+        // ============================================================
+        // 模拟数据生成 → 触发 LLM 调用
+        // ============================================================
+        function simulateStep() {
+            if (!isRunning) return;
+
+            const kneeAngle = 70 + Math.random() * 40;
+            const hipAngle = 60 + Math.random() * 30;
+
+            drawStickman(kneeAngle, hipAngle);
+
+            addLog(`📐 [工具] 姿态估计完成，提取关键点坐标`, 'done');
+            addLog(`📊 [工具] 计算角度: 左膝=${Math.round(kneeAngle)}°, 左髋=${Math.round(hipAngle)}°`, 'done');
+
+            if (analysisTimer) {
+                clearTimeout(analysisTimer);
+                analysisTimer = null;
+            }
+            analysisTimer = setTimeout(async () => {
+                addLog('🔄 开始智能体工作流: 姿态数据 → LLM分析', 'running');
+                const advice = await callQwen(kneeAngle, hipAngle);
+                setAdvice(advice);
+                analysisTimer = null;
+            }, 1500);
+        }
+
+        // ============================================================
+        // 启动/停止
+        // ============================================================
+        function startSimulation() {
+            if (isRunning) return;
+            isRunning = true;
+            statusText.textContent = '🟢 运行中（模拟）';
+            addLog('🚀 智能体已启动（模拟模式）', '');
+            addLog('🔧 初始化姿态估计工具（模拟）...', 'running');
+            setTimeout(() => {
+                addLog('✅ 姿态估计工具就绪（模拟）', 'done');
+                simulateStep();
+                simInterval = setInterval(simulateStep, 3000 + Math.random() * 1000);
+            }, 500);
+        }
+
+        function stopSimulation() {
+            isRunning = false;
+            if (simInterval) {
+                clearInterval(simInterval);
+                simInterval = null;
+            }
+            if (analysisTimer) {
+                clearTimeout(analysisTimer);
+                analysisTimer = null;
+            }
+            statusText.textContent = '⏹ 已停止';
+            addLog('⏹ 智能体已停止', '');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#0a0c12';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#8892b0';
+            ctx.font = '20px sans-serif';
+            ctx.fillText('已停止', 280, 240);
+        }
+
+        // ============================================================
+        // 事件绑定
+        // ============================================================
+        startBtn.addEventListener('click', startSimulation);
+        stopBtn.addEventListener('click', stopSimulation);
+
+        addLog('💡 点击"启动模拟"开始智能体工作流', '');
+        addLog('📌 工作流: 模拟姿态估计 → 角度计算 → LLM分析 → 康复建议', '');
+    </script>
+</body>
+</html>
